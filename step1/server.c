@@ -2,10 +2,12 @@
 #define SERVER_INIT_SEQNUM 300
 void UDPSetup();
 void PktReceive();
-void PktTransmission(int, int, int, int, int, int, int, char*);
-double Pow();
-double Sqrt();
+void PktTransmission(int, int, int, int, int, int, int, char*, char*, int*);
+double Pow(int*);
+double Sqrt(int*);
 int* DNS();
+void ReplyVideo();
+
 
 int main (int argc, cahr const *argv[]) {
 
@@ -38,7 +40,6 @@ void UDPSetup() {
 }
 void PktReceive() {
     int rcvLen; // receive bytes
-    char *ack = "ack";
     socklen_t len = sizeof(cliaddr);  //len is value/resuslt
     while(1) { 
         TCPPacket rcvPkt; 
@@ -55,7 +56,7 @@ void PktReceive() {
     }
 }
 
-void PktTransmission(int srcPort, int destPort, int seqNum, int ackNum, int checkSum, int isSyn, int isAck, char* request) {
+void PktTransmission(int srcPort, int destPort, int seqNum, int ackNum, int checkSum, int isSyn, int isAck, char* request, char* charData, int* intData) {
     TCPPacket sendPkt;
     sendPkt.srcPort = destPort;
     sendPkt.destPort = srcPort;
@@ -70,13 +71,19 @@ void PktTransmission(int srcPort, int destPort, int seqNum, int ackNum, int chec
     
         switch(request) {
             case "pow":
-                double result = Pow();    
+                double result = Pow(intData);    
+                break;
             case "sqrt":
                 double result = Sqrt();
+                break;
             case "DNS":
                 int* ip = DNS(); 
+                break;
             case "video":
-
+                void ReplyVideo();
+                break;
+            default:
+                break;
         }
 
     }
@@ -84,23 +91,22 @@ void PktTransmission(int srcPort, int destPort, int seqNum, int ackNum, int chec
 
 }
 
-int Pow() {
-    int num1, num2;
-    printf("Enter the number: ");
-    scanf("%d, %d", num1, num2);
-    return pow(num1, num2);
+int Pow(int* intData) {
+    return pow(*intData, *(intData + 1));
 }
 
-int Sqrt() {
-    int num;
-    printf("Enter the number: ");
-    scanf("%d", num);
-    return sqrt(num);
+int Sqrt(int* intData) {
+    return sqrt(*intData);
 
 }
 
 int* DNS() {
 
 
+
+}
+
+void ReplyVideo() {
+    printf("which")
 
 }

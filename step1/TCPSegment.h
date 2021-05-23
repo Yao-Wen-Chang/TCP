@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <math.h>
 #define SERVER_PORT 8080
+#define CLIENT_PORT 4000
 #define MAXLINE 1024
 
 
@@ -21,6 +22,7 @@ struct TCPPacket {
     int isSyn;
     int isAck;
     char *request; // video retrieve, math calculation, DNS
-
+    char *charData;
+    int *intData;
 
 }
