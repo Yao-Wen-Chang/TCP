@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <math.h>
+#include <netdb.h> // for DNS method
 #define SERVER_PORT 8080
 #define CLIENT_PORT 4000
 #define MAXLINE 1024
@@ -21,8 +22,8 @@ struct TCPPacket {
     int checkSum;
     int isSyn;
     int isAck;
-    char *request; // video retrieve, math calculation, DNS
+    int request; // pow:1, sqrt:2, DNS:3, video retrieve:4
     char *charData;
     int *intData;
-
-}
+    double *doubleData;
+};
