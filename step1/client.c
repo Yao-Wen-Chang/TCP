@@ -115,26 +115,21 @@ void Request() {
 
         switch(reqType) {
             case 1: // pow
-                sendPkt.intData = malloc(sizeof(int) * 2);
                 printf("Please type in two numbers.\n");
-                scanf("%d%d", sendPkt.intData, sendPkt.intData + 1);
+                scanf("%d%d", &(sendPkt.intData[0]), &(sendPkt.intData[1]));
                 break;
 
             case 2: // sqrt
-                sendPkt.intData = malloc(sizeof(int));
                 printf("Please type in one number.\n");
-                scanf("%d", sendPkt.intData);
+                scanf("%d", &(sendPkt.intData[0]));
                 break;
 
-            case 3: //DNS
-                sendPkt.charData = malloc(sizeof(char) * 50);
+            case 3: // DNS
                 printf("Please type in a domain name\n");
                 scanf("%s", sendPkt.charData);
-                
                 break;
             case 4: // video
-                sendPkt.charData = malloc(sizeof(char) * 50);
-                printf("Please type in which viedo you want\n");
+                printf("Please type in which viedo you want: 1.mp4 2.mp4 ....\n");
                 scanf("%s", sendPkt.charData);
                 
                 break;
@@ -144,20 +139,21 @@ void Request() {
 
         /* setup the packet */
         sendPkt.seqNum = rcvPkt.ackNum; 
-        sendPkt.ackNum = rcvPkt.seqNum + sizeof(sendPkt);
+        sendPkt.ackNum = rcvPkt.seqNum + sizeof(rcvPkt); // the next wanting packet sequence number
 
         /* send the packet */
-        if(sendto(sockfd, (char*)&sendPkt, sizeof(sendPkt), 0,
+        if(sendto(sockfd, &sendPkt, sizeof(sendPkt), 0,
                    (struct sockaddr*)&servaddr, addrLen) < 0) {
 
             printf("Please resend!!\n");
         }
         else {
             printf("sending packet seq_num = %d ack_num = %d\n", sendPkt.seqNum, sendPkt.ackNum);
+
         }
 
         /* receive the packet */ 
-        if(recvfrom(sockfd, (char*)&rcvPkt, sizeof(rcvPkt), 0,
+        if(recvfrom(sockfd, &rcvPkt, sizeof(rcvPkt), 0,
             (struct sockaddr*)&servaddr, &addrLen) < 0){
             printf("Didn't receive the packet\n");
         }
@@ -167,6 +163,7 @@ void Request() {
             switch(reqType) {
                 case 1:
                 case 2:
+                    printf("checkpoint\n");
                     printf("the result is %f\n", rcvPkt.doubleData);
                     break;
 
@@ -176,8 +173,7 @@ void Request() {
             }
         }
 
-        free(sendPkt.intData);
-        free(sendPkt.charData);
+        
 
     }
 }

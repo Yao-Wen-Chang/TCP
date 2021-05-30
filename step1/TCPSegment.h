@@ -23,7 +23,7 @@ struct TCPPacket {
     int isSyn;
     int isAck;
     int request; // pow:1, sqrt:2, DNS:3, video retrieve:4
-    char *charData;
-    int *intData;
-    double *doubleData;
+    char charData[1024];
+    int intData[2];
+    double doubleData;
 };
