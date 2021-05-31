@@ -10,6 +10,7 @@ struct TCPPacket sendPkt, rcvPkt;
 void UDPSetup(); 
 void ThreeWayHandshake();
 void Request();
+void StoreVideo();
 
 int main(int argc, char *argv[]) {
 
@@ -130,7 +131,7 @@ void Request() {
                 break;
             case 4: // video
                 printf("Please type in which viedo you want: 1.mp4 2.mp4 ....\n");
-                scanf("%s", sendPkt.charData);
+                scanf("%s", sendPkt.videoName);
                 
                 break;
 
@@ -153,27 +154,49 @@ void Request() {
         }
 
         /* receive the packet */ 
-        if(recvfrom(sockfd, &rcvPkt, sizeof(rcvPkt), 0,
-            (struct sockaddr*)&servaddr, &addrLen) < 0){
-            printf("Didn't receive the packet\n");
+        if(reqType == 4) {
+            StoreVideo();
         }
         else {
 
-            printf("receive the packet: seq_num = %d ack_num = %d\n", rcvPkt.seqNum, rcvPkt.ackNum);    
-            switch(reqType) {
-                case 1:
-                case 2:
-                    printf("checkpoint\n");
-                    printf("the result is %f\n", rcvPkt.doubleData);
-                    break;
+            if(recvfrom(sockfd, &rcvPkt, sizeof(rcvPkt), 0,
+                (struct sockaddr*)&servaddr, &addrLen) < 0){
+                printf("Didn't receive the packet\n");
+            }
+            else {
 
-                case 3:
-                    printf("the result is %s\n", rcvPkt.charData);
-                    break;
+                printf("receive the packet: seq_num = %d ack_num = %d\n", rcvPkt.seqNum, rcvPkt.ackNum);    
+                switch(reqType) {
+                    case 1:
+                    case 2:
+                        printf("checkpoint\n");
+                        printf("the result is %f\n", rcvPkt.doubleData);
+                        break;
+
+                    case 3:
+                        printf("the result is %s\n", rcvPkt.charData);
+                        break;
+                }
             }
         }
-
         
+    }
+    
+}
+
+
+void StoreVideo() {
+    FILE *file;
+    file = fopen(rcvPkt.videoName, "wb");
+
+    int addrLen = sizeof(cliaddr);
+    printf("check 1\n");
+    while(recvfrom(sockfd, &rcvPkt, sizeof(rcvPkt), 0, (struct sockaddr*)&servaddr, &addrLen) > 0) :{
+        printf("-------------------------------------\n");
+        printf("%s\n", rcvPkt.charData);
+        fwrite(rcvPkt.charData, sizeof(char), MAX_BUFFER_SIZE, file);
 
     }
+    printf("check 2\n");
+    printf("Finish receive the video\n"); 
 }
