@@ -11,6 +11,8 @@ void UDPSetup();
 void ThreeWayHandshake();
 void Request();
 void StoreVideo();
+void SendPkt();
+void ReceivePkt();
 
 int main(int argc, char *argv[]) {
 
@@ -52,51 +54,29 @@ void ThreeWayHandshake() {
     printf( "-----Start the three-way handshake-----\n" ) ;
 
     /* first time syn */
-    // packet setup
     sendPkt.seqNum = CLIENT_INIT_SEQNUM;
     sendPkt.isSyn = 1;
     sendPkt.isAck = 0;
+    sendPkt.request = 0;
     sendPkt.srcPort = CLIENT_PORT;
     sendPkt.destPort = SERVER_PORT; 
+    SendPkt();
 
-    // send packet to server
-    if(sendto(sockfd, (char*)&sendPkt, sizeof(sendPkt), 0,
-               (struct sockaddr*)&servaddr, addrLen) < 0) {
 
-        printf("Please reconnect!!");
-    }
-    else {
-        printf("the sending packet seq-num: %d\n", sendPkt.seqNum);
-    
-    }
-     
     // receive the cameback data
-    if(recvfrom(sockfd, (char*)&rcvPkt, sizeof(rcvPkt), 0,
-        (struct sockaddr*)&servaddr, &addrLen) < 0){
-        printf("Didn't receive the packet\n");
-    }
-    else {
-
-        printf("receive the packet: seq_num = %d ack_num = %d\n", rcvPkt.seqNum, rcvPkt.ackNum);    
-
-        sendPkt.seqNum = rcvPkt.ackNum;
-        sendPkt.ackNum = rcvPkt.seqNum + 1; 
-        sendPkt.isSyn = 0;
-        sendPkt.isAck = 1;
-    }
+    ReceivePkt();
     
-    if(sendto(sockfd, (char*)&sendPkt, sizeof(sendPkt), 0,
-               (struct sockaddr*)&servaddr, addrLen) < 0) {
+    /* first time ack */
+    sendPkt.seqNum = rcvPkt.ackNum;
+    sendPkt.ackNum = rcvPkt.seqNum + 1; 
+    sendPkt.isSyn = 0;
+    sendPkt.isAck = 1;
+    SendPkt();
 
-        printf("Please reconnect!!");
-    }
-    else {
-        printf("the sending packet seq-num: %d ack_num = %d\n", sendPkt.seqNum, sendPkt.ackNum);
 
-        sendPkt.isSyn = 0;
-        sendPkt.isAck = 0;
-    }
-
+    /* finish handshake pkt setup */
+    sendPkt.isSyn = 0;
+    sendPkt.isAck = 0;
     printf("-----Three way handshake finish-----\n");
 }
 
@@ -138,47 +118,36 @@ void Request() {
 
         }
 
-        /* setup the packet */
-        sendPkt.seqNum = rcvPkt.ackNum; 
-        sendPkt.ackNum = rcvPkt.seqNum + sizeof(rcvPkt); // the next wanting packet sequence number
+        SendPkt();
 
-        /* send the packet */
-        if(sendto(sockfd, &sendPkt, sizeof(sendPkt), 0,
-                   (struct sockaddr*)&servaddr, addrLen) < 0) {
-
-            printf("Please resend!!\n");
-        }
-        else {
-            printf("sending packet seq_num = %d ack_num = %d\n", sendPkt.seqNum, sendPkt.ackNum);
-
-        }
-
-        /* receive the packet */ 
         if(reqType == 4) {
             StoreVideo();
         }
         else {
+            ReceivePkt();
 
-            if(recvfrom(sockfd, &rcvPkt, sizeof(rcvPkt), 0,
-                (struct sockaddr*)&servaddr, &addrLen) < 0){
-                printf("Didn't receive the packet\n");
+            /* switch to reveal which kind of info */ 
+            switch(reqType) {
+                case 1:
+                case 2:
+                    printf("checkpoint\n");
+                    printf("the result is %f\n", rcvPkt.doubleData);
+                    break;
+
+                case 3:
+                    printf("the result is %s\n", rcvPkt.charData);
+                    break;
             }
-            else {
 
-                printf("receive the packet: seq_num = %d ack_num = %d\n", rcvPkt.seqNum, rcvPkt.ackNum);    
-                switch(reqType) {
-                    case 1:
-                    case 2:
-                        printf("checkpoint\n");
-                        printf("the result is %f\n", rcvPkt.doubleData);
-                        break;
-
-                    case 3:
-                        printf("the result is %s\n", rcvPkt.charData);
-                        break;
-                }
-            }
+            /* setup the packet */
+            sendPkt.seqNum = rcvPkt.ackNum; 
+            sendPkt.ackNum = rcvPkt.seqNum + sizeof(rcvPkt); // the next wanting packet sequence number
+            sendPkt.isAck = 1;
+            SendPkt();
         }
+        
+        sendPkt.isAck = 0; // restore for next time request
+
         
     }
     
@@ -187,16 +156,51 @@ void Request() {
 
 void StoreVideo() {
     FILE *file;
-    file = fopen(rcvPkt.videoName, "wb");
-
     int addrLen = sizeof(cliaddr);
-    printf("check 1\n");
-    while(recvfrom(sockfd, &rcvPkt, sizeof(rcvPkt), 0, (struct sockaddr*)&servaddr, &addrLen) > 0) :{
-        printf("-------------------------------------\n");
-        printf("%s\n", rcvPkt.charData);
-        fwrite(rcvPkt.charData, sizeof(char), MAX_BUFFER_SIZE, file);
+    file = fopen("received-video", "wb");
 
-    }
-    printf("check 2\n");
-    printf("Finish receive the video\n"); 
+    /* start receive the video */
+    if(file != NULL) { 
+
+        while(recvfrom(sockfd, &rcvPkt, sizeof(rcvPkt), 0, (struct sockaddr*)&servaddr, &addrLen) > 0) {
+            if(strcmp(rcvPkt.charData, "final") == 0)
+                break;
+            printf("receive the packet: seq_num = %d ack_num = %d\n", rcvPkt.seqNum, rcvPkt.ackNum);    
+            fwrite(rcvPkt.charData, sizeof(char), MAX_BUFFER_SIZE, file); // write the video into the file
+
+            /* setup the packet */
+            sendPkt.seqNum = rcvPkt.ackNum; 
+            sendPkt.ackNum = rcvPkt.seqNum + sizeof(rcvPkt); // the next wanting packet sequence number
+            sendPkt.isAck = 1;
+            SendPkt();     
+
+        }
+        printf("Finish receive the video\n"); 
+    }    
+    else
+        printf("fail to create a new file\n");
+
 }
+void SendPkt() {
+    int addrLen = sizeof(cliaddr);
+    /* send the packet */
+    if(sendto(sockfd, &sendPkt, sizeof(sendPkt), 0, (struct sockaddr*)&servaddr, addrLen) < 0) {
+        printf("Please resend!!\n");
+    }
+    else {
+        printf("sending packet seq_num = %d ack_num = %d\n", sendPkt.seqNum, sendPkt.ackNum);
+    }
+
+}
+void ReceivePkt() {
+    int addrLen = sizeof(cliaddr);
+    /* receive the packet */
+    if(recvfrom(sockfd, &rcvPkt, sizeof(rcvPkt), 0, (struct sockaddr*)&servaddr, &addrLen) < 0){
+        printf("Didn't receive the packet\n");
+    }
+    else {
+        printf("receive the packet: seq_num = %d ack_num = %d\n", rcvPkt.seqNum, rcvPkt.ackNum);    
+    }
+
+}
+

@@ -73,7 +73,7 @@ void PktTransmission() {
         sendPkt.isAck = 1;
         SendPkt();
     }
-    else if(rcvPkt.isAck) {
+    else if(rcvPkt.isAck && rcvPkt.request == 0) {
         
         sendPkt.isSyn = 0;
         sendPkt.isAck = 0;
@@ -81,43 +81,43 @@ void PktTransmission() {
         return;
     }
     else { 
-        switch(rcvPkt.request) {
-            case 1:
-                Pow(rcvPkt.intData);    
-                break;
+        if(rcvPkt.request == 4) {
+            ReplyVideo();
+        }
+        else {
+            switch(rcvPkt.request) {
+                case 1:
+                    Pow(rcvPkt.intData);    
+                    break;
 
-            case 2:
-                Sqrt(rcvPkt.intData);
-                break;
+                case 2:
+                    Sqrt(rcvPkt.intData);
+                    break;
 
-            case 3:
-                DNS(rcvPkt.charData); 
-                break;
+                case 3:
+                    DNS(rcvPkt.charData); 
+                    break;
 
-            case 4:
-                ReplyVideo();
-                break;
-
-            default:
-                break;
+                default:
+                    break;
+            }
+           
+            /* setup the packet */
+            sendPkt.seqNum = rcvPkt.ackNum;
+            sendPkt.ackNum = rcvPkt.seqNum + sizeof(rcvPkt); // the next wanting packet sequence number
+            sendPkt.isAck = 1;
+            SendPkt();
         }
     }
 
-   
-
-
-
-
-
 }
+
 void Pow(int* intData) {
     sendPkt.doubleData = pow(intData[0], intData[1]);
-    SendPkt();
 }
 
 void Sqrt(int* intData) {
     sendPkt.doubleData = sqrt(intData[0]);
-    SendPkt();
 }
 
 void DNS(char* hostname) {
@@ -132,7 +132,6 @@ void DNS(char* hostname) {
         address = (struct in_addr *) (hostInfo->h_addr);
         printf("%s has address %s\n", hostname, inet_ntoa(*address));
         strcpy(sendPkt.charData, inet_ntoa(*address)); 
-        SendPkt();
     }
 }
 
@@ -140,21 +139,36 @@ void ReplyVideo() {
     
     FILE *file;
     char videoPath[20] = "../";
-    int len;
+    int rcvLen;
+
+    int addrLen = sizeof(cliaddr);
     strcat(videoPath, rcvPkt.videoName); // because video file put in top directotry
     file = fopen(videoPath, "r");
-
+    
     if(file != NULL) {
-        printf("check\n");
-        if(fread(sendPkt.charData, sizeof(char), MAX_BUFFER_SIZE, file) == MAX_BUFFER_SIZE) 
+        while(fread(sendPkt.charData, sizeof(char), MAX_BUFFER_SIZE, file) != 0) {
+
+            /* setup the packet */
+            sendPkt.seqNum = rcvPkt.ackNum;  
+            sendPkt.ackNum = rcvPkt.seqNum + sizeof(rcvPkt);
+
             // buffer , bytes of element , elements count , file
-            
             SendPkt();
-        else
-            printf("fail\n");
 
-
-        SendPkt();           
+            /* receive the ack if ack keep sending */
+            rcvLen = recvfrom(sockfd, &rcvPkt, sizeof(rcvPkt), 0, (struct sockaddr *)&cliaddr, &addrLen);
+            
+            if(rcvLen > 0) {
+                printf("receive the packet: seq_num = %d ack_num = %d\n", rcvPkt.seqNum, rcvPkt.ackNum);
+            }
+            else 
+                printf("receiver did not receive the packet");
+                
+        }    
+        printf("check\n");
+        strcpy(sendPkt.charData, "final");
+        printf("%s\n", sendPkt.charData);
+        SendPkt();
         printf("finish sending the video\n");
        
     }
@@ -162,7 +176,6 @@ void ReplyVideo() {
         printf("incorrect open file\n");
 
 
-    /* start sending the video */
 
 
 
@@ -173,9 +186,6 @@ void ReplyVideo() {
 void SendPkt() {
 
     int addrLen = sizeof(cliaddr);
-    /* setup the packet */
-    sendPkt.seqNum = rcvPkt.ackNum;  
-    sendPkt.ackNum = rcvPkt.seqNum + sizeof(rcvPkt);
 
 
     /* send the packet */
