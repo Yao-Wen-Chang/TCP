@@ -2,6 +2,7 @@
 #define SERVER_INIT_SEQNUM 300
 #define CLIENT_NUM 2
 
+/* function declaration */
 void UDPSetup();
 void PktReceive();
 void *PktTransmission(void*); // decide reply which kind of acket and reply it
@@ -10,7 +11,10 @@ void Sqrt(int*, int);
 void DNS(char*, int);
 void ReplyVideo(int);
 void SendPkt(int);
+int PktLossGen(int);
+unsigned short GenChecksum(struct TCPPacket);
 
+/* global variable declaration */
 int sockfd;
 struct TCPPacket sendPkt[CLIENT_NUM], rcvPkt[CLIENT_NUM], tmpPkt;
 struct sockaddr_in servaddr, cliaddr;
@@ -201,7 +205,11 @@ void ReplyVideo(int pktID) {
 void SendPkt(int pktID) {
 
     int addrLen = sizeof(cliaddr);
-
+    if(PktLossGen(sendPkt[pktID].seqNum)) {
+        sendPkt[pktID].checkSum = 87;
+    }    
+    else 
+        sendPkt[pktID].checkSum = GenChecksum(sendPkt[pktID]);
 
     /* send the packet */
     if(sendto(sockfd, (char*)&sendPkt[pktID], sizeof(sendPkt[pktID]), 0, (struct sockaddr*)&cliaddr, addrLen) < 0) {
@@ -211,4 +219,49 @@ void SendPkt(int pktID) {
     else {
         printf("[+] [pid %d]the sending packet seq-num: %d ack_num = %d\n", pktID, sendPkt[pktID].seqNum, sendPkt[pktID].ackNum);
     }
+}
+
+
+int PktLossGen(int seq) {
+    seq %= 1000000;
+    int rndNum = rand() % 1000000;
+
+    return rndNum == seq;
+}
+
+
+unsigned short GenChecksum(struct TCPPacket pkt) {
+    unsigned short sum = 0 ;
+	unsigned short temp = 0 ;
+	sum += pkt.srcPort ;
+	sum += pkt.destPort ;
+	if ( 65535-pkt.srcPort < pkt.destPort ) ++sum ;
+	
+	temp = ( pkt.seqNum >> 16 ) ;
+	sum += temp ;
+	
+	if ( 65535-sum < temp ) ++sum ;
+	temp = pkt.seqNum ;
+	sum += temp ;
+	if ( 65535-sum < temp ) ++sum ;
+	
+	temp = ( pkt.ackNum >> 16 ) ;
+	sum += temp ;
+	if ( 65535-sum < temp ) ++sum ;
+	temp = pkt.ackNum ;
+	sum += temp ;
+	if ( 65535-sum < temp ) ++sum ;
+	
+	uint16_t *data_pointer = (uint16_t *) pkt.charData ;
+	int bytes = sizeof( pkt.charData ) ;
+	while(bytes > 1){
+        temp = (unsigned short)*data_pointer++;
+        //If it overflows to the MSBs add it straight away
+        sum += temp ;
+        if ( 65535-sum < temp ) ++sum ;
+        bytes -= 2; //Consumed 2 bytes
+    } 
+
+    return ~sum;   
+
 }

@@ -16,14 +16,13 @@ void Request(int);
 void StoreVideo(int);
 void SendPkt(int);
 void ReceivePkt(int);
-void p();
+unsigned short GenChecksum(struct TCPPacket);
 
 int main(int argc, char *argv[]) { // argv is the client port number
     int i;
     int arg[CLIENT_NUM];
     UDPSetup();
     pthread_t ptid[CLIENT_NUM];
-    p();
 
     if(pthread_mutex_init(&lock, NULL) !=0) {
         printf("mutex init fail\n");
@@ -40,9 +39,6 @@ int main(int argc, char *argv[]) { // argv is the client port number
     }    
     pthread_exit(NULL);
 }  
-void p(){
-    return;
-}
 void UDPSetup() {
 
     // Creating socket file descriptor
@@ -189,6 +185,10 @@ void StoreVideo(int pktID) {
         while(recvfrom(sockfd, &rcvPkt[pktID], sizeof(rcvPkt[pktID]), 0, (struct sockaddr*)&servaddr, &addrLen) > 0) {
             if(strcmp(rcvPkt[pktID].charData, "final") == 0)
                 break;
+
+            if(rcvPkt[pktID].checkSum != GenChecksum(rcvPkt[pktID]))
+                printf("A Wrong Packet Found !!!!\n");
+
             printf("[+] [pid %d]receive the packet: seq_num = %d ack_num = %d\n", pktID, rcvPkt[pktID].seqNum, rcvPkt[pktID].ackNum);    
             fwrite(rcvPkt[pktID].charData, sizeof(char), MAX_BUFFER_SIZE, file); // write the video into the file
 
@@ -225,7 +225,45 @@ void ReceivePkt(int pktID) {
     }
     else {
         printf("[+] [pid %d]receive the packet: seq_num = %d ack_num = %d\n", pktID, rcvPkt[pktID].seqNum, rcvPkt[pktID].ackNum);    
+        if(rcvPkt[pktID].checkSum != GenChecksum(rcvPkt[pktID]))
+            printf("A Wrong Packet Found !!!!\n");
+            
     }
 
 }
 
+unsigned short GenChecksum(struct TCPPacket pkt) {
+    unsigned short sum = 0 ;
+	unsigned short temp = 0 ;
+	sum += pkt.srcPort ;
+	sum += pkt.destPort ;
+	if ( 65535-pkt.srcPort < pkt.destPort ) ++sum ;
+	
+	temp = ( pkt.seqNum >> 16 ) ;
+	sum += temp ;
+	
+	if ( 65535-sum < temp ) ++sum ;
+	temp = pkt.seqNum ;
+	sum += temp ;
+	if ( 65535-sum < temp ) ++sum ;
+	
+	temp = ( pkt.ackNum >> 16 ) ;
+	sum += temp ;
+	if ( 65535-sum < temp ) ++sum ;
+	temp = pkt.ackNum ;
+	sum += temp ;
+	if ( 65535-sum < temp ) ++sum ;
+	
+	uint16_t *data_pointer = (uint16_t *) pkt.charData ;
+	int bytes = sizeof( pkt.charData ) ;
+	while(bytes > 1){
+        temp = (unsigned short)*data_pointer++;
+        //If it overflows to the MSBs add it straight away
+        sum += temp ;
+        if ( 65535-sum < temp ) ++sum ;
+        bytes -= 2; //Consumed 2 bytes
+    } 
+
+    return ~sum;   
+
+}

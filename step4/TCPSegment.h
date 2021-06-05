@@ -21,7 +21,7 @@ struct TCPPacket {
     int destPort;
     int seqNum;
     int ackNum;
-    int checkSum;
+    unsigned short checkSum;
     int isSyn;
     int isAck;
     int request; // pow:1, sqrt:2, DNS:3, video retrieve:4
