@@ -8,16 +8,15 @@
 #include <netinet/in.h>
 #include <math.h>
 #include <netdb.h> // for DNS method
+#include <unistd.h>  //Header file for sleep(). man 3 sleep for details.
+#include <pthread.h>
 #define SERVER_PORT 8080
 #define CLIENT_PORT 4000
 #define MAX_BUFFER_SIZE 512
-#define RTT 15  // ms
-#define MSS 1   // Kbytes
-#define THRESHOLD 64    // Kbytes
-#define RCV_BUFFER_SIZE 512 // Kbytes
+
 
 struct TCPPacket {
-
+    int ID;
     int srcPort;
     int destPort;
     int seqNum;
