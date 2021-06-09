@@ -10,16 +10,17 @@
 #include <netdb.h> // for DNS method
 #include <unistd.h>  //Header file for sleep(). man 3 sleep for details.
 #include <pthread.h>
-#include <system.h> // for sleep() or wait()
+#include <time.h> // for calculate timeout
 
 #define SERVER_PORT 8080
 #define CLIENT_PORT 4000
 #define MAX_BUFFER_SIZE 512
-#define DELAY_ACK 500 // delay() ms
-#define MSS 1 // kbytes
+#define DELAY_ACK 0.5 // delay() /s
+#define MSS 1.0 // kbytes
 #define ROUND_TRIP_DELAY 15 // ms
-#define VAR_THREASHOLD 64 // kbytes 
+#define SSTHRESH 64.0 // kbytes 
 #define TRANSMISSION_RATE 10 // Mbps
+#define TIMEOUT 2.0
 
 struct TCPPacket {
     int ID;
@@ -37,3 +38,15 @@ struct TCPPacket {
     int intData[2];
     double doubleData;
 };
+void delay(int number_of_seconds) // because the delay function is not working
+{
+    // Converting time into milli_seconds
+    int milli_seconds = 1000 * number_of_seconds;
+  
+    // Storing start time
+    clock_t start_time = clock();
+  
+    // looping till required time is not achieved
+    while (clock() < start_time + milli_seconds)
+        ;
+}

@@ -191,12 +191,12 @@ void StoreVideo(int pktID) {
 
             if(rcvPkt[pktID].checkSum != GenChecksum(rcvPkt[pktID])) {
                 printf("A Wrong Packet Found !!!!\n");
-                ackHistory[tmpPkt.ID] ++; // wrong so no ack
+                ackHistory[pktID] ++; // wrong so no ack
             }
             else {
                 printf("[+] [pid %d]receive the packet: seq_num = %d ack_num = %d\n", pktID, rcvPkt[pktID].seqNum, rcvPkt[pktID].ackNum);    
                 fwrite(rcvPkt[pktID].charData, sizeof(char), MAX_BUFFER_SIZE, file); // write the video into the file
-                if(sendPkt[pktID].ackNum != rcvPkt[pktId].seqNum) { // send same ack
+                if(sendPkt[pktID].ackNum != rcvPkt[pktID].seqNum) { // send same ack
                     sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum; 
                 }
                 else {
@@ -233,13 +233,13 @@ void ReceivePkt(int pktID) {
     /* receive the packet */
     if(recvfrom(sockfd, &rcvPkt[pktID], sizeof(rcvPkt[pktID]), 0, (struct sockaddr*)&servaddr, &addrLen) < 0){
         printf("[-] [pid %d]Didn't receive the packet\n", pktID);
-        ackHistory[tmpPkt.ID] ++; // wrong so no ack
+        ackHistory[pktID] ++; // wrong so no ack
     }
     else {
         printf("[+] [pid %d]receive the packet: seq_num = %d ack_num = %d\n", pktID, rcvPkt[pktID].seqNum, rcvPkt[pktID].ackNum);    
         if(rcvPkt[pktID].checkSum != GenChecksum(rcvPkt[pktID])) {
             printf("A Wrong Packet Found !!!!\n");
-            ackHistory[tmpPkt.ID] ++; // wrong so no ack
+            ackHistory[pktID] ++; // wrong so no ack
 
         }    
             

@@ -2,6 +2,7 @@
 #define SERVER_INIT_SEQNUM 300
 #define CLIENT_NUM 2
 /* assume the ack from the client is equal to zero */
+
 /* function declaration */
 void UDPSetup();
 void PktReceive();
@@ -21,8 +22,11 @@ struct TCPPacket sendPkt[CLIENT_NUM], rcvPkt[CLIENT_NUM], tmpPkt;
 struct sockaddr_in servaddr, cliaddr;
 int ackHistory[CLIENT_NUM] = {0}; // record how many packet haven't been acked yet for each clients
 int dupAckNum[CLIENT_NUM] = {0};
-int cwnd[CLIENT_NUM] = {MSS}; // MSS == 1
-int congestAvoid = 0; // boolean for congestion avoidance
+double cwnd[CLIENT_NUM] = {MSS}; // MSS == 1
+int isCongestAvoid = 0; // boolean for congestion avoidance
+int isSlowStart = 1; // boolean for congestion avoidance
+
+
 pthread_mutex_t lock;
 
 int main (int argc, char const *argv[]) { 
@@ -174,13 +178,13 @@ void ReplyVideo(int pktID) {
     int rcvLen;
     int rcvAck = 0; // for purpose of checking duplicate ack
     int addrLen = sizeof(cliaddr);
+    int ssthresh = SSTHRESH;
+    clock_t  startTime, endTime;
     strcat(videoPath, rcvPkt[pktID].videoName); // because video file put in top directotry
     file = fopen(videoPath, "r");
-    
     printf("****************** slow start ******************\n");
     if(file != NULL) {
         while(fread(sendPkt[pktID].charData, sizeof(char), MAX_BUFFER_SIZE, file)) {
-
             /* setup the packet */
             sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum;  
             sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum;
@@ -192,18 +196,50 @@ void ReplyVideo(int pktID) {
             
             if(recvfrom(sockfd, &rcvPkt[pktID], sizeof(rcvPkt[pktID]), 0, (struct sockaddr *)&cliaddr, &addrLen) > 0) {
                 printf("[+] [pid %d]receive the packet: seq_num = %d ack_num = %d\n", pktID, rcvPkt[pktID].seqNum, rcvPkt[pktID].ackNum);
-                
-                if(rcvPkt[pktID].ackNum == rcvAck) {
-                    /* duplicate ack */
-                    dupAckNum[pktID]++;
+                if(isSlowStart) {
+                    if(rcvPkt[pktID].ackNum == rcvAck) {
+                        /* duplicate ack */
+                        dupAckNum[pktID]++;
 
-                }        
-                else { 
-                    /* new ack */
-                    rcvAck = rcvPkt[pktID].ackNum;    
-                    cwnd[pktID] += 1;
-                    dupAckNum[pktID] = 0;
+                    }        
+                    else { 
+                        /* new ack */
+                        rcvAck = rcvPkt[pktID].ackNum;    
+                        cwnd[pktID] += MSS;
+                        dupAckNum[pktID] = 0;
+                        if(cwnd[pktID] >= ssthresh) {
+                            startTime = clock();  
+                            isCongestAvoid = 1;
+                            isSlowStart = 0;
+                        }    
+
+                    }
                 }
+                else if(isCongestAvoid) {
+
+                    if(rcvPkt[pktID].ackNum == rcvAck) {
+                        /* duplicate ack */
+                        dupAckNum[pktID]++;
+
+                    }        
+                    else { 
+                        /* new ack */
+                        rcvAck = rcvPkt[pktID].ackNum;    
+                        cwnd[pktID] += MSS * MSS / cwnd[pktID];
+                        dupAckNum[pktID] = 0;
+                    }
+
+                    endTime = clock();
+                    double timeSpan = ((double)(endTime - startTime)) / CLOCKS_PER_SEC;
+                    if(timeSpan >= TIMEOUT) {
+                        // timeout
+                        ssthresh = cwnd[pktID] / 2;
+                        cwnd[pktID] = MSS;
+                        dupAckNum[pktID] = 0.0;
+
+                    }
+
+                }    
             }
             else { 
 
@@ -291,3 +327,4 @@ unsigned short GenChecksum(struct TCPPacket pkt) {
     return ~sum;   
 
 }
+
