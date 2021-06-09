@@ -160,10 +160,10 @@ void Request(int pktID) {
 
             /* setup the packet */
             sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum; 
-            sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum + sizeof(rcvPkt); // the next wanting packet sequence number
+            sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum + sizeof(rcvPkt[pktID]); // the next wanting packet sequence number
             sendPkt[pktID].isAck = 1;
 
-            if(ackHistory[pktID] > 0)
+            if(ackHistory[pktID] == 0)
                 delay(DELAY_ACK);
             SendPkt(pktID);
         }
@@ -196,12 +196,16 @@ void StoreVideo(int pktID) {
             else {
                 printf("[+] [pid %d]receive the packet: seq_num = %d ack_num = %d\n", pktID, rcvPkt[pktID].seqNum, rcvPkt[pktID].ackNum);    
                 fwrite(rcvPkt[pktID].charData, sizeof(char), MAX_BUFFER_SIZE, file); // write the video into the file
-
-                /* setup the packet */
-                sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum; 
-                sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum + sizeof(rcvPkt[pktID]); // the next wanting packet sequence number
+                if(sendPkt[pktID].ackNum != rcvPkt[pktId].seqNum) { // send same ack
+                    sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum; 
+                }
+                else {
+                    /* setup the packet */
+                    sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum; 
+                    sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum + sizeof(rcvPkt[pktID]); // the next wanting packet sequence number
+                }
                 sendPkt[pktID].isAck = 1;
-                if(ackHistory[pktID] > 0)
+                if(ackHistory[pktID] == 0) // if in-order packet delay 500ms
                     delay(DELAY_ACK);
                 SendPkt(pktID);     
             }

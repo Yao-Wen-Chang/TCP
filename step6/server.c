@@ -1,7 +1,7 @@
 #include "TCPSegment.h"
 #define SERVER_INIT_SEQNUM 300
 #define CLIENT_NUM 2
-
+/* assume the ack from the client is equal to zero */
 /* function declaration */
 void UDPSetup();
 void PktReceive();
@@ -13,12 +13,16 @@ void ReplyVideo(int);
 void SendPkt(int);
 int PktLossGen(int);
 unsigned short GenChecksum(struct TCPPacket);
+void detectOutOrder();
 
 /* global variable declaration */
 int sockfd;
 struct TCPPacket sendPkt[CLIENT_NUM], rcvPkt[CLIENT_NUM], tmpPkt;
 struct sockaddr_in servaddr, cliaddr;
-int ackHistory[CLIENT_NUM]; // record how many packet haven't been acked yet for each clients
+int ackHistory[CLIENT_NUM] = {0}; // record how many packet haven't been acked yet for each clients
+int dupAckNum[CLIENT_NUM] = {0};
+int cwnd[CLIENT_NUM] = {MSS}; // MSS == 1
+int congestAvoid = 0; // boolean for congestion avoidance
 pthread_mutex_t lock;
 
 int main (int argc, char const *argv[]) { 
@@ -95,8 +99,6 @@ void *PktTransmission(void *ID) {
         sendPkt[pktID].seqNum = SERVER_INIT_SEQNUM;    
         sendPkt[pktID].isSyn = 1;
         sendPkt[pktID].isAck = 1;
-        if(ackHistory[pktID] > 0)
-            delay(DELAY_ACK);
         SendPkt(pktID);
     }
     else if(rcvPkt[pktID].isAck && rcvPkt[pktID].request == 0) {
@@ -130,10 +132,10 @@ void *PktTransmission(void *ID) {
            
             /* setup the packet */
             sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum;
-            sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum + sizeof(rcvPkt[pktID]); // the next wanting packet sequence number
+            sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum; // the next wanting packet sequence number
             sendPkt[pktID].isAck = 1;
 
-            if(ackHistory[pktID] > 0)
+            if(ackHistory[pktID] == 0)
                 delay(DELAY_ACK);
             SendPkt(pktID);
         }
@@ -170,17 +172,18 @@ void ReplyVideo(int pktID) {
     FILE *file;
     char videoPath[20] = "../";
     int rcvLen;
-
+    int rcvAck = 0; // for purpose of checking duplicate ack
     int addrLen = sizeof(cliaddr);
     strcat(videoPath, rcvPkt[pktID].videoName); // because video file put in top directotry
     file = fopen(videoPath, "r");
     
+    printf("****************** slow start ******************\n");
     if(file != NULL) {
         while(fread(sendPkt[pktID].charData, sizeof(char), MAX_BUFFER_SIZE, file)) {
 
             /* setup the packet */
             sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum;  
-            sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum + sizeof(rcvPkt[pktID]);
+            sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum;
 
             // buffer , bytes of element , elements count , file
             SendPkt(pktID);
@@ -189,7 +192,18 @@ void ReplyVideo(int pktID) {
             
             if(recvfrom(sockfd, &rcvPkt[pktID], sizeof(rcvPkt[pktID]), 0, (struct sockaddr *)&cliaddr, &addrLen) > 0) {
                 printf("[+] [pid %d]receive the packet: seq_num = %d ack_num = %d\n", pktID, rcvPkt[pktID].seqNum, rcvPkt[pktID].ackNum);
-                // for delayed ack
+                
+                if(rcvPkt[pktID].ackNum == rcvAck) {
+                    /* duplicate ack */
+                    dupAckNum[pktID]++;
+
+                }        
+                else { 
+                    /* new ack */
+                    rcvAck = rcvPkt[pktID].ackNum;    
+                    cwnd[pktID] += 1;
+                    dupAckNum[pktID] = 0;
+                }
             }
             else { 
 
@@ -277,4 +291,3 @@ unsigned short GenChecksum(struct TCPPacket pkt) {
     return ~sum;   
 
 }
-
