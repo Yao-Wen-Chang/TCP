@@ -103,7 +103,7 @@ void *ThreeWayHandshake(void *ID) {
 
 /* start test 4 functions */
 void Request(int pktID) { 
-    int reqType;
+    //int reqType;
     int num1, num2;
     char* videoName;
     char* domainName;
@@ -111,11 +111,11 @@ void Request(int pktID) {
     while(1) {
         pthread_mutex_lock(&lock);
         printf("[+] [pid %d]Type the request you want: pow:1, sqrt:2, DNS:3, video retrieve:4\n", pktID);
-        scanf("%d", &reqType);
-        sendPkt[pktID].request = reqType;
+        scanf("%d", &sendPkt[pktID].request);
+        //sendPkt[pktID].request = reqType;
         sendPkt[pktID].isAck = 0;
 
-        switch(reqType) {
+        switch(sendPkt[pktID].request) {
             case 1: // pow
                 printf("[+] [pid %d]Please type in two numbers.\n", pktID);
                 scanf("%d%d", &(sendPkt[pktID].intData[0]), &(sendPkt[pktID].intData[1]));
@@ -140,14 +140,14 @@ void Request(int pktID) {
         }
         
         SendPkt(pktID);
-        if(reqType == 4) {
+        if(sendPkt[pktID].request == 4) {
             StoreVideo(pktID);
         }
         else {
             ReceivePkt(pktID);
 
             /* switch to reveal which kind of info */ 
-            switch(reqType) {
+            switch(sendPkt[pktID].request) {
                 case 1:
                 case 2:
                     printf("[+] [pid %d]the result is %f\n", pktID, rcvPkt[pktID].doubleData);
@@ -171,7 +171,7 @@ void Request(int pktID) {
         sendPkt[pktID].isAck = 0; // restore for next time request
         
         pthread_mutex_unlock(&lock);
-        
+       
     }
     
 }
@@ -180,12 +180,15 @@ void Request(int pktID) {
 void StoreVideo(int pktID) {
     FILE *file;
     int addrLen = sizeof(cliaddr);
-    file = fopen("received-video", "wb");
+    char filename[30];
+    sprintf(filename, "%d", pktID);
+    strcat(filename, "----  received video"); 
+    file = fopen(filename, "wb");
 
     /* start receive the video */
     if(file != NULL) { 
 
-        while(recvfrom(sockfd, &rcvPkt[pktID], sizeof(rcvPkt[pktID]), 0, (struct sockaddr*)&servaddr, &addrLen) > 0) {
+        while(recvfrom(sockfd, &rcvPkt[pktID], sizeof(rcvPkt[pktID]), 0, (struct sockaddr*)&servaddr, &addrLen)) {
             if(strcmp(rcvPkt[pktID].charData, "final") == 0)
                 break;
 
@@ -195,18 +198,14 @@ void StoreVideo(int pktID) {
             }
             else {
                 printf("[+] [pid %d]receive the packet: seq_num = %d ack_num = %d\n", pktID, rcvPkt[pktID].seqNum, rcvPkt[pktID].ackNum);    
-                fwrite(rcvPkt[pktID].charData, sizeof(char), MAX_BUFFER_SIZE, file); // write the video into the file
-                if(sendPkt[pktID].ackNum != rcvPkt[pktID].seqNum) { // send same ack
-                    sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum; 
-                }
-                else {
-                    /* setup the packet */
-                    sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum; 
-                    sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum + sizeof(rcvPkt[pktID]); // the next wanting packet sequence number
-                }
+                fwrite(rcvPkt[pktID].charData, sizeof(char), MSS, file); // write the video into the file
+                sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum; 
+                sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum; // the next wanting packet sequence number
+                
                 sendPkt[pktID].isAck = 1;
                 if(ackHistory[pktID] == 0) // if in-order packet delay 500ms
                     delay(DELAY_ACK);
+                delay(ROUND_TRIP_DELAY);    
                 SendPkt(pktID);     
             }
         }
@@ -219,6 +218,7 @@ void StoreVideo(int pktID) {
 }
 void SendPkt(int pktID) {
     int addrLen = sizeof(cliaddr);
+    delay(ROUND_TRIP_DELAY);
     /* send the packet */
     if(sendto(sockfd, &sendPkt[pktID], sizeof(sendPkt[pktID]), 0, (struct sockaddr*)&servaddr, addrLen) < 0) {
         printf("[-] [pid %d]Please resend!!\n", pktID);

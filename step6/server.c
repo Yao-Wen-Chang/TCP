@@ -22,21 +22,28 @@ struct TCPPacket sendPkt[CLIENT_NUM], rcvPkt[CLIENT_NUM], tmpPkt;
 struct sockaddr_in servaddr, cliaddr;
 int ackHistory[CLIENT_NUM] = {0}; // record how many packet haven't been acked yet for each clients
 int dupAckNum[CLIENT_NUM] = {0};
-double cwnd[CLIENT_NUM] = {MSS}; // MSS == 1
-int isCongestAvoid = 0; // boolean for congestion avoidance
-int isSlowStart = 1; // boolean for congestion avoidance
-
+int cwnd[CLIENT_NUM]; // MSS == 1024.0
+int isCongestAvoid[CLIENT_NUM] = {0}; // boolean for congestion avoidance
+int isSlowStart[CLIENT_NUM] = {1}; // boolean for congestion avoidance
+int startProcess[CLIENT_NUM] = {0};
 
 pthread_mutex_t lock;
 
 int main (int argc, char const *argv[]) { 
     UDPSetup();
-    PktReceive();
+    int i;
+    int client[CLIENT_NUM];
 
+    for(i = 0; i < CLIENT_NUM; i++) {
+        client[i] = i;
+        pthread_create(&ptid[pktID], NULL, &PktReceive, (void*)&client[i]);
+    }    
+    for(i = 0; i < CLIENT_NUM; i++) {
+        pthread_join(ptid[i], NULL);
+    }
+    pthread_exit(NULL);
     return 0;
 }
-
-
 void UDPSetup() {
     
     // Creating socket file descriptor
@@ -64,7 +71,7 @@ void UDPSetup() {
     }
     memset(ackHistory, 0, sizeof(CLIENT_NUM)); // set all packet ack to all packets have acked
 }
-void PktReceive() {
+void *PktReceive() {
     int addrLen = sizeof(cliaddr);
     int pktID;
     int i;
@@ -79,17 +86,19 @@ void PktReceive() {
         pthread_mutex_lock(&lock); // lock point to prevent race condition
         if(recvfrom(sockfd, &tmpPkt, sizeof(tmpPkt), 0, (struct sockaddr *)&cliaddr, &addrLen) > 0) {
             pktID = tmpPkt.ID;
+            if(startProcess[pktID] == 1)
+                continue;
             memcpy(&rcvPkt[pktID], &tmpPkt, sizeof(tmpPkt));
             printf("[+] [pid %d]Receive the data: ack num = %d, seq num = %d\n", pktID, rcvPkt[pktID].ackNum, rcvPkt[pktID].seqNum);
             /* pthread start process */
 
-            pthread_create(&ptid[pktID], NULL, &PktTransmission, (void*)&pktID);
         }
         else { 
             ackHistory[tmpPkt.ID] ++; // wrong so no ack
             printf("[-] [pid %d]Something wrong!!\n", pktID);
 
         }
+
     }
     for(i = 0; i < CLIENT_NUM; i++) {
         pthread_join(ptid[i], NULL);
@@ -113,7 +122,9 @@ void *PktTransmission(void *ID) {
     }
     else if(!rcvPkt[pktID].isAck){ 
         
+
         if(rcvPkt[pktID].request == 4) {
+            startProcess[pktID] = 1;
             ReplyVideo(pktID);
         }
         else {
@@ -139,11 +150,15 @@ void *PktTransmission(void *ID) {
             sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum; // the next wanting packet sequence number
             sendPkt[pktID].isAck = 1;
 
-            if(ackHistory[pktID] == 0)
+            if(ackHistory[pktID] == 0) {
+                printf("******************** delay ack occur*******************\n");
                 delay(DELAY_ACK);
+            }    
             SendPkt(pktID);
         }
+        
     }
+
     pthread_mutex_unlock(&lock); // unlock
 
 }
@@ -172,72 +187,82 @@ void DNS(char* hostname, int pktID) {
 }
 
 void ReplyVideo(int pktID) {
-    
+
+    /* local variable declare */ 
     FILE *file;
     char videoPath[20] = "../";
     int rcvLen;
+    int i;
+    int br = 0; // break when read at the file's end
     int rcvAck = 0; // for purpose of checking duplicate ack
     int addrLen = sizeof(cliaddr);
+    int readLen = 0;
     int ssthresh = SSTHRESH;
     clock_t  startTime, endTime;
+
+
+    /* data setup */
     strcat(videoPath, rcvPkt[pktID].videoName); // because video file put in top directotry
     file = fopen(videoPath, "r");
-    printf("****************** slow start ******************\n");
+    sendPkt[pktID].seqNum = 1;
+    cwnd[pktID] = 1;
+    isCongestAvoid[pktID] = 0;
+    isSlowStart[pktID] = 1; 
+
     if(file != NULL) {
-        while(fread(sendPkt[pktID].charData, sizeof(char), MAX_BUFFER_SIZE, file)) {
-            /* setup the packet */
-            sendPkt[pktID].seqNum = rcvPkt[pktID].ackNum;  
+        
+        while(fread(sendPkt[pktID].charData, sizeof(char), MSS, file)) {
+        printf("****************** slow start ******************\n");
+            printf("[+] [pid %d]cwnd = %d kbytes, threshold = %d kbytes\n", pktID, cwnd[pktID], ssthresh);
+
+            sendPkt[pktID].seqNum = cwnd[pktID];  
             sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum;
-
-            // buffer , bytes of element , elements count , file
             SendPkt(pktID);
-
-            /* receive the ack if ack keep sending */
-            
+            printf("[+] [pid %d] send a packet at: %d kbytes\n", pktID, cwnd[pktID]);
+            //printf("%ld\n", sizeof(sendPkt[pktID])); 
+            /* setup the packet */
+            /*sendPkt[pktID].seqNum = cwnd[pktID];  
+            sendPkt[pktID].ackNum = rcvPkt[pktID].seqNum;*/
+   
+            //SendPkt(pktID);
+/*
             if(recvfrom(sockfd, &rcvPkt[pktID], sizeof(rcvPkt[pktID]), 0, (struct sockaddr *)&cliaddr, &addrLen) > 0) {
                 printf("[+] [pid %d]receive the packet: seq_num = %d ack_num = %d\n", pktID, rcvPkt[pktID].seqNum, rcvPkt[pktID].ackNum);
-                if(isSlowStart) {
+                if(isSlowStart[pktID]) {
                     if(rcvPkt[pktID].ackNum == rcvAck) {
-                        /* duplicate ack */
+                        
                         dupAckNum[pktID]++;
 
                     }        
-                    else { 
-                        /* new ack */
+                    //else { 
+                        // new ack 
+                        printf("test---------\n");
                         rcvAck = rcvPkt[pktID].ackNum;    
-                        cwnd[pktID] += MSS;
+                        cwnd[pktID] *= 2;
                         dupAckNum[pktID] = 0;
                         if(cwnd[pktID] >= ssthresh) {
-                            startTime = clock();  
-                            isCongestAvoid = 1;
-                            isSlowStart = 0;
+                            isCongestAvoid[pktID] = 1;
+                            isSlowStart[pktID] = 0;
+                            
+                            printf("****************** congestion avoid ******************\n");
+                            printf("cwnd = %d  threshold = %d\n", cwnd[pktID], ssthresh);
                         }    
 
-                    }
+                    //}
                 }
-                else if(isCongestAvoid) {
-
+                else if(isCongestAvoid[pktID]) {
                     if(rcvPkt[pktID].ackNum == rcvAck) {
-                        /* duplicate ack */
                         dupAckNum[pktID]++;
 
                     }        
-                    else { 
-                        /* new ack */
+                    //else { 
+                        // new ack 
                         rcvAck = rcvPkt[pktID].ackNum;    
-                        cwnd[pktID] += MSS * MSS / cwnd[pktID];
+                        
+                        cwnd[pktID] += 1;
                         dupAckNum[pktID] = 0;
-                    }
+                    //}
 
-                    endTime = clock();
-                    double timeSpan = ((double)(endTime - startTime)) / CLOCKS_PER_SEC;
-                    if(timeSpan >= TIMEOUT) {
-                        // timeout
-                        ssthresh = cwnd[pktID] / 2;
-                        cwnd[pktID] = MSS;
-                        dupAckNum[pktID] = 0.0;
-
-                    }
 
                 }    
             }
@@ -246,27 +271,26 @@ void ReplyVideo(int pktID) {
                 ackHistory[tmpPkt.ID] ++; // wrong so no ack
                 printf("[-] [pid %d]receiver did not receive the packet\n", pktID);
             }
+
+            if(br)
+                break;                
+        
+*/
         }    
         strcpy(sendPkt[pktID].charData, "final");
         SendPkt(pktID);
         printf("[+] [pid %d]finish sending the video\n", pktID);
         fclose(file);
+        startProcess[pktID] = 0;
        
     }
     else
         printf("[-] [pid %d]incorrect open file\n", pktID);
-
-
-
-
-
-
-
-
 }
 void SendPkt(int pktID) {
 
     int addrLen = sizeof(cliaddr);
+    delay(ROUND_TRIP_DELAY);
     if(PktLossGen(sendPkt[pktID].seqNum)) {
         sendPkt[pktID].checkSum = 87;
     }    
@@ -277,9 +301,6 @@ void SendPkt(int pktID) {
     if(sendto(sockfd, (char*)&sendPkt[pktID], sizeof(sendPkt[pktID]), 0, (struct sockaddr*)&cliaddr, addrLen) < 0) {
         printf("[-] [pid %d]Please resend!!\n", pktID);
 
-    }
-    else {
-        printf("[+] [pid %d]the sending packet seq-num: %d ack_num = %d\n", pktID, sendPkt[pktID].seqNum, sendPkt[pktID].ackNum);
     }
 }
 

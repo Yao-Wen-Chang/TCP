@@ -14,13 +14,13 @@
 
 #define SERVER_PORT 8080
 #define CLIENT_PORT 4000
-#define MAX_BUFFER_SIZE 512
+#define MAX_BUFFER_SIZE 1024
 #define DELAY_ACK 0.5 // delay() /s
-#define MSS 1.0 // kbytes
-#define ROUND_TRIP_DELAY 15 // ms
-#define SSTHRESH 64.0 // kbytes 
+#define MSS 1024 // kbytes
+#define ROUND_TRIP_DELAY 0.015 // s
+#define SSTHRESH 64 // kbytes 
 #define TRANSMISSION_RATE 10 // Mbps
-#define TIMEOUT 2.0
+#define TIMEOUT 0.5 //s
 
 struct TCPPacket {
     int ID;
@@ -33,6 +33,7 @@ struct TCPPacket {
     int isAck;
     int request; // pow:1, sqrt:2, DNS:3, video retrieve:4
     char charData[MAX_BUFFER_SIZE];
+    int cwndSize;
     char videoName[10];
     int videoLen;
     int intData[2];
